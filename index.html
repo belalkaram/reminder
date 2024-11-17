@@ -1,0 +1,240 @@
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تطبيق تدوين الملاحظات اليومية</title>
+    <script src="https://unpkg.com/react/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css"></link>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            direction: rtl;
+        }
+    </style>
+</head>
+<body class="bg-gray-800 text-white">
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        const App = () => {
+            const [notes, setNotes] = useState([]);
+            const [newNote, setNewNote] = useState("");
+            const [newImage, setNewImage] = useState(null);
+            const [newLink, setNewLink] = useState("");
+            const [newRecord, setNewRecord] = useState(null);
+            const [sidebarOpen, setSidebarOpen] = useState(true);
+            const [isRecording, setIsRecording] = useState(false);
+            const [mediaRecorder, setMediaRecorder] = useState(null);
+            const [audioChunks, setAudioChunks] = useState([]);
+            const [selectedNote, setSelectedNote] = useState(null);
+            const [searchTerm, setSearchTerm] = useState("");
+            const [isCameraOpen, setIsCameraOpen] = useState(false);
+            const [capturedImage, setCapturedImage] = useState(null);
+
+            useEffect(() => {
+                const savedNotes = JSON.parse(localStorage.getItem('notes'));
+                if (savedNotes) {
+                    setNotes(savedNotes);
+                }
+            }, []);
+
+            useEffect(() => {
+                localStorage.setItem('notes', JSON.stringify(notes));
+            }, [notes]);
+
+            const resetNoteInputs = () => {
+                setNewNote("");
+                setNewImage(null);
+                setNewLink("");
+                setNewRecord(null);
+                setCapturedImage(null);
+            };
+
+            const addNote = () => {
+                if (newNote || newImage || newLink || newRecord || capturedImage) {
+                    setNotes([...notes, { text: newNote, image: newImage || capturedImage, link: newLink, record: newRecord }]);
+                    resetNoteInputs();
+                } else {
+                    alert("الرجاء إضافة ملاحظة، صورة، رابط، أو تسجيل قبل الإضافة.");
+                }
+            };
+
+            const toggleSidebar = () => {
+                setSidebarOpen(!sidebarOpen);
+            };
+
+            const startRecording = async () => {
+                try {
+                    setIsRecording(true);
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    const recorder = new MediaRecorder(stream);
+                    setMediaRecorder(recorder);
+
+                    recorder.ondataavailable = (event) => {
+                        setAudioChunks((prev) => [...prev, event.data]);
+                    };
+
+                    recorder.onstop = () => {
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/mpeg' });
+                        const audioUrl = URL.createObjectURL(audioBlob);
+                        setNewRecord(audioUrl);
+                        setAudioChunks([]);
+                    };
+
+                    recorder.start();
+                } catch (error) {
+                    console.error("خطأ في بدء التسجيل: ", error);
+                    alert("تم رفض الوصول إلى الميكروفون. يرجى السماح للوصول لمتابعة التسجيل.");
+                    setIsRecording(false);
+                }
+            };
+
+            const stopRecording = () => {
+                if (mediaRecorder) {
+                    setIsRecording(false);
+                    mediaRecorder.stop();
+                    setMediaRecorder(null);
+                }
+            };
+
+            const removeNote = (index) => {
+                setNotes((prevNotes) => prevNotes.filter((_, i) => i !== index));
+            };
+
+            const viewNoteDetails = (note) => {
+                setSelectedNote(note);
+            };
+
+            const closeModal = () => {
+                setSelectedNote(null);
+            };
+
+            const openCamera = async () => {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    const videoElement = document.createElement('video');
+                    videoElement.srcObject = stream;
+                    videoElement.play();
+                    setIsCameraOpen(true);
+                    setTimeout(() => {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = videoElement.videoWidth;
+                        canvas.height = videoElement.videoHeight;
+                        const context = canvas.getContext('2d');
+                        context.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+                        const imageUrl = canvas.toDataURL('image/png');
+                        setCapturedImage(imageUrl);
+                        stream.getTracks().forEach(track => track.stop());
+                        setIsCameraOpen(false);
+                    }, 3000);
+                } catch (error) {
+                    console.error("خطأ في فتح الكاميرا: ", error);
+                }
+            };
+
+            const filteredNotes = notes.filter(note =>
+                note.text.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+
+            return (
+                <div className="min-h-screen flex">
+                    <aside className={`bg-gray-700 shadow-lg p-4 transition-transform duration-300 ${sidebarOpen ? 'w-64' : 'w-0'}`}>                        {sidebarOpen && (
+                            <>
+                                <h2 className="text-xl font-semibold mb-4">تدويناتي</h2>
+                                <input
+                                    type="text"
+                                    className="w-full p-2 mb-4 rounded bg-gray-600 text-white"
+                                    placeholder="ابحث عن ملاحظة..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                />
+                                <div className="space-y-4">
+                                    {filteredNotes.map((note, index) => (
+                                        <div key={index} className="p-4 bg-gray-600 rounded shadow">
+                                            <p>{note.text}</p>
+                                            {note.image && <img src={note.image} alt="صورة مرفقة" className="mt-2 rounded" />}
+                                            {note.link && <a href={note.link} target="_blank" rel="noopener noreferrer" className="text-blue-400 mt-2 block">{note.link}</a>}
+                                            {note.record && <audio controls className="mt-2"><source src={note.record} type="audio/mpeg" /></audio>}
+                                            <div className="flex space-x-2 mt-2">
+                                                <button onClick={() => viewNoteDetails(note)} className="p-2 bg-blue-500 text-white rounded">عرض التفاصيل</button>
+                                                <button onClick={() => removeNote(index)} className="p-2 bg-red-500 text-white rounded">حذف الملاحظة</button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </>
+                        )}
+                    </aside>
+                    <div className="flex-1">
+                        <header className="bg-gray-700 shadow p-4 flex justify-between items-center">
+                            <div className="flex items-center">
+                                <button onClick={toggleSidebar} className="p-2 rounded-full bg-gray-600 mr-4">
+                                    <i className="fas fa-bars text-white"></i>
+                                </button>
+                                <h1 className="text-2xl font-bold text-white">تدوينات بولا</h1>
+                            </div>
+                        </header>
+                        <main className="p-4">
+                            <section className="mb-8">
+                                <h2 className="text-xl font-semibold mb-4 text-white">عندنا اي النهاردة يبولا؟</h2>
+                                <div className="mb-4">
+                                    <textarea
+                                        className="w-full p-4 border border-gray-600 rounded-lg shadow-lg transform transition-transform duration-200 hover:translate-y-1 hover:shadow-2xl focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition duration-300 ease-in-out bg-gray-700 text-white"
+                                        value={newNote}
+                                        onChange={(e) => setNewNote(e.target.value)}
+                                        placeholder="اكتب ملاحظتك هنا..."
+                                    ></textarea>
+                                    <input
+                                        type="file"
+                                        className="w-full p-4 border border-gray-600 rounded-lg shadow-lg transform transition-transform duration-200 hover:translate-y-1 hover:shadow-2xl focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition duration-300 ease-in-out bg-gray-700 text-white mt-4"
+                                        onChange={(e) => setNewImage(e.target.files[0])}
+                                    />
+                                    <input
+                                        type="text"
+                                        className="w-full p-4 border border-gray-600 rounded-lg shadow-lg transform transition-transform duration-200 hover:translate-y-1 hover:shadow-2xl focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition duration-300 ease-in-out bg-gray-700 text-white mt-4"
+                                        value={newLink}
+                                        onChange={(e) => setNewLink(e.target.value)}
+                                        placeholder="أضف رابط هنا..."
+                                    />
+                                    <button
+                                        onClick={openCamera}
+                                        className="w-full p-4 border border-gray-600 rounded-lg shadow-lg transform transition-transform duration-200 hover:translate-y-1 hover:shadow-2xl focus:outline-none focus:ring-2 bg-gray-700 text-white mt-4"
+                                    >
+                                        فتح الكاميرا لالتقاط صورة
+                                    </button>
+                                    <button
+                                        onClick={isRecording ? stopRecording : startRecording}
+                                        className={`w-full p-4 border border-gray-600 rounded-lg shadow-lg transform transition-transform duration-200 hover:translate-y-1 hover:shadow-2xl focus:outline-none focus:ring-2 ${isRecording ? 'bg-red-500' : 'bg-gray-700'} text-white mt-4`}
+                                    >
+                                        {isRecording ? 'إيقاف التسجيل' : 'بدء التسجيل'}
+                                    </button>
+                                    <button onClick={addNote} className="mt-2 p-2 bg-red-500 text-white rounded shadow-lg transform transition-transform duration-200 hover:translate-y-1 hover:shadow-xl">إضافة ملاحظة</button>
+                                </div>
+                            </section>
+                        </main>
+                    </div>
+                    {selectedNote && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                            <div className="bg-gray-800 p-6 rounded-lg shadow-lg w-1/2">
+                                <h2 className="text-xl font-bold mb-4">تفاصيل الملاحظة</h2>
+                                <p className="mb-4">{selectedNote.text}</p>
+                                {selectedNote.image && <img src={selectedNote.image} alt="صورة مرفقة" className="mb-4 rounded" />}
+                                {selectedNote.link && <a href={selectedNote.link} target="_blank" rel="noopener noreferrer" className="text-blue-400 block mb-4">{selectedNote.link}</a>}
+                                {selectedNote.record && <audio controls className="mb-4"><source src={selectedNote.record} type="audio/mpeg" /></audio>}
+                                <button onClick={closeModal} className="p-2 bg-red-500 text-white rounded">إغلاق</button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        ReactDOM.render(<App />, document.getElementById('root'));
+    </script>
+</body>
+</html>
